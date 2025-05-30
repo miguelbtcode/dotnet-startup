@@ -1,5 +1,5 @@
 // src/App.tsx
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   ChakraProvider,
   Container,
@@ -22,13 +22,15 @@ import {
   Button,
   useToast,
 } from "@chakra-ui/react";
-import { 
-  Settings, 
-  Package, 
-  FileText, 
-  CheckCircle, 
+import {
+  Settings,
+  Package,
+  FileText,
+  CheckCircle,
   AlertTriangle,
-  ArrowRight 
+  ArrowRight,
+  Lock,
+  Save,
 } from "lucide-react";
 import { ProjectForm } from "./components/ProjectForm";
 import { ProjectPreview } from "./components/ProjectPreview";
@@ -37,70 +39,75 @@ import { ProjectDependenciesManager } from "./components/ProjectDependenciesMana
 import { useProjectStore } from "./store/projectStore";
 
 function App() {
-  const { config } = useProjectStore();
+  const {
+    config,
+    isConfigurationSaved,
+    isBasicConfigValid,
+    canAccessDependencies,
+    canAccessExport,
+    hasUnsavedChanges,
+  } = useProjectStore();
+
   const [activeTab, setActiveTab] = useState(0);
   const toast = useToast();
-
-  // Validation for tab access
-  const isBasicConfigValid = () => {
-    return config.name && config.name.trim().length > 0;
-  };
-
-  const canAccessDependencies = () => {
-    return isBasicConfigValid() && config.architecture !== 'default';
-  };
 
   const handleTabChange = (index: number) => {
     if (index === 1 && !canAccessDependencies()) {
       toast({
-        title: "Configuration Required",
-        description: "Please complete basic configuration and select an architecture first",
+        title: "Save Configuration Required",
+        description:
+          "Please save your configuration first by clicking 'Save Configuration' button",
         status: "warning",
-        duration: 3000,
+        duration: 4000,
+        position: "top",
       });
       return;
     }
+
+    if (index === 2 && !canAccessExport()) {
+      toast({
+        title: "Save Configuration Required",
+        description: "Please save your configuration first",
+        status: "warning",
+        duration: 3000,
+        position: "top",
+      });
+      return;
+    }
+
     setActiveTab(index);
   };
-
-  // Auto-advance to dependencies tab when config is complete
-  useEffect(() => {
-    if (canAccessDependencies() && activeTab === 0) {
-      // Optional: Auto-suggest moving to dependencies
-      // You can uncomment this if you want automatic progression
-      // setActiveTab(1);
-    }
-  }, [config.name, config.architecture, activeTab]);
 
   const getTabStatus = (tabIndex: number) => {
     switch (tabIndex) {
       case 0:
-        return isBasicConfigValid() ? 'complete' : 'current';
+        return isBasicConfigValid() && isConfigurationSaved
+          ? "complete"
+          : "current";
       case 1:
-        return canAccessDependencies() ? 'available' : 'disabled';
+        return canAccessDependencies() ? "available" : "disabled";
       case 2:
-        return isBasicConfigValid() ? 'available' : 'disabled';
+        return canAccessExport() ? "available" : "disabled";
       default:
-        return 'disabled';
+        return "disabled";
     }
   };
 
-  const TabWithStatus: React.FC<{ 
-    index: number; 
-    icon: any; 
-    label: string; 
-    description: string 
+  const TabWithStatus: React.FC<{
+    index: number;
+    icon: any;
+    label: string;
+    description: string;
   }> = ({ index, icon, label, description }) => {
     const status = getTabStatus(index);
-    const isActive = activeTab === index;
-    
+
     return (
       <Tab
-        isDisabled={status === 'disabled'}
-        opacity={status === 'disabled' ? 0.5 : 1}
+        isDisabled={status === "disabled"}
+        opacity={status === "disabled" ? 0.5 : 1}
         _selected={{
-          borderBottomColor: 'blue.500',
-          color: 'blue.600',
+          borderBottomColor: "blue.500",
+          color: "blue.600",
         }}
         position="relative"
       >
@@ -110,15 +117,21 @@ function App() {
             <Text fontSize="sm" fontWeight="medium">
               {label}
             </Text>
-            {status === 'complete' && (
+            {status === "complete" && (
               <Icon as={CheckCircle} size={14} color="green.500" />
             )}
-            {status === 'disabled' && (
-              <Icon as={AlertTriangle} size={14} color="gray.400" />
+            {status === "disabled" && (
+              <Icon
+                as={!isConfigurationSaved ? Lock : AlertTriangle}
+                size={14}
+                color="gray.400"
+              />
             )}
           </HStack>
           <Text fontSize="xs" color="gray.500" textAlign="center">
-            {description}
+            {status === "disabled" && !isConfigurationSaved
+              ? "Save config first"
+              : description}
           </Text>
         </VStack>
       </Tab>
@@ -138,94 +151,125 @@ function App() {
             >
               .NET Project Generator
             </Heading>
-            
+
             {/* Progress Indicator */}
             <HStack spacing={4} justify="center">
-              <Badge 
-                colorScheme={isBasicConfigValid() ? 'green' : 'gray'} 
-                variant={isBasicConfigValid() ? 'solid' : 'outline'}
-                px={3} 
+              <Badge
+                colorScheme={
+                  isBasicConfigValid() && isConfigurationSaved
+                    ? "green"
+                    : hasUnsavedChanges()
+                    ? "orange"
+                    : "gray"
+                }
+                variant={
+                  isBasicConfigValid() && isConfigurationSaved
+                    ? "solid"
+                    : "outline"
+                }
+                px={3}
                 py={1}
                 borderRadius="full"
               >
                 <HStack spacing={1}>
-                  <Icon as={Settings} size={12} />
-                  <Text fontSize="xs">Basic Config</Text>
-                  {isBasicConfigValid() && <Icon as={CheckCircle} size={10} />}
+                  <Icon
+                    as={isConfigurationSaved ? CheckCircle : Save}
+                    size={12}
+                  />
+                  <Text fontSize="xs">
+                    {isConfigurationSaved
+                      ? "Config Saved"
+                      : hasUnsavedChanges()
+                      ? "Save Required"
+                      : "Configure"}
+                  </Text>
                 </HStack>
               </Badge>
-              
+
               <Icon as={ArrowRight} size={16} color="gray.400" />
-              
-              <Badge 
-                colorScheme={canAccessDependencies() ? 'blue' : 'gray'} 
-                variant={canAccessDependencies() ? 'solid' : 'outline'}
-                px={3} 
+
+              <Badge
+                colorScheme={canAccessDependencies() ? "blue" : "gray"}
+                variant={canAccessDependencies() ? "solid" : "outline"}
+                px={3}
                 py={1}
                 borderRadius="full"
               >
                 <HStack spacing={1}>
-                  <Icon as={Package} size={12} />
+                  <Icon
+                    as={canAccessDependencies() ? Package : Lock}
+                    size={12}
+                  />
                   <Text fontSize="xs">Dependencies</Text>
                 </HStack>
               </Badge>
-              
+
               <Icon as={ArrowRight} size={16} color="gray.400" />
-              
-              <Badge 
-                colorScheme={isBasicConfigValid() ? 'purple' : 'gray'} 
-                variant={isBasicConfigValid() ? 'solid' : 'outline'}
-                px={3} 
+
+              <Badge
+                colorScheme={canAccessExport() ? "purple" : "gray"}
+                variant={canAccessExport() ? "solid" : "outline"}
+                px={3}
                 py={1}
                 borderRadius="full"
               >
                 <HStack spacing={1}>
-                  <Icon as={FileText} size={12} />
+                  <Icon as={canAccessExport() ? FileText : Lock} size={12} />
                   <Text fontSize="xs">Export</Text>
                 </HStack>
               </Badge>
             </HStack>
           </VStack>
 
-          {/* Configuration Guide */}
-          {!isBasicConfigValid() && (
+          {/* Configuration Alerts - Only show one at a time */}
+          {!isBasicConfigValid() ? (
             <Alert status="info" borderRadius="lg">
               <AlertIcon />
               <AlertDescription>
-                <strong>Getting Started:</strong> Please enter your project name and select your preferred architecture to begin configuring dependencies.
+                <strong>Getting Started:</strong> Please enter your project name
+                and select your preferred settings to begin.
               </AlertDescription>
             </Alert>
-          )}
-
-          {isBasicConfigValid() && !canAccessDependencies() && (
+          ) : !isConfigurationSaved ? (
             <Alert status="warning" borderRadius="lg">
               <AlertIcon />
               <AlertDescription>
-                <strong>Enhanced Architecture:</strong> Select Clean Architecture, DDD, Hexagonal, or Onion to access advanced dependency management features.
+                <strong>Save Required:</strong> Click the "Save Configuration"
+                button to unlock additional features and proceed to the next
+                steps.
               </AlertDescription>
             </Alert>
-          )}
+          ) : config.architecture === "default" && activeTab === 0 ? (
+            <Alert status="info" borderRadius="lg">
+              <AlertIcon />
+              <AlertDescription>
+                <strong>Enhanced Features Available:</strong> You can switch to
+                Clean Architecture, DDD, Hexagonal, or Onion to access advanced
+                dependency management features.
+              </AlertDescription>
+            </Alert>
+          ) : null}
 
-          <Tabs 
-            index={activeTab} 
+          <Tabs
+            index={activeTab}
             onChange={handleTabChange}
-            variant="enclosed" 
+            variant="enclosed"
             colorScheme="blue"
           >
             <TabList>
-              <TabWithStatus 
+              <TabWithStatus
                 index={0}
                 icon={Settings}
                 label="Project Configuration"
                 description="Basic setup & features"
               />
-              <TabWithStatus 
+              <TabWithStatus
                 index={1}
                 icon={Package}
                 label="Dependencies"
                 description="NuGet packages per project"
               />
-              <TabWithStatus 
+              <TabWithStatus
                 index={2}
                 icon={FileText}
                 label="Preview & Export"
@@ -246,29 +290,46 @@ function App() {
 
                   <VStack spacing={8} align="stretch">
                     <ProjectPreview />
-                    
-                    {canAccessDependencies() && (
-                      <Box p={4} bg="blue.50" borderRadius="lg" borderWidth="1px" borderColor="blue.200">
+
+                    {canAccessDependencies() ? (
+                      <Box
+                        p={4}
+                        bg="blue.50"
+                        borderRadius="lg"
+                        borderWidth="1px"
+                        borderColor="blue.200"
+                      >
                         <VStack spacing={3}>
                           <Icon as={Package} size={24} color="blue.500" />
-                          <Text textAlign="center" fontWeight="medium" color="blue.700">
+                          <Text
+                            textAlign="center"
+                            fontWeight="medium"
+                            color="blue.700"
+                          >
                             Ready for Dependencies!
                           </Text>
-                          <Text fontSize="sm" textAlign="center" color="blue.600">
-                            Your {config.architecture} architecture is configured. 
-                            Move to the Dependencies tab to add NuGet packages.
+                          <Text
+                            fontSize="sm"
+                            textAlign="center"
+                            color="blue.600"
+                          >
+                            {config.architecture === "default"
+                              ? "Your monolithic project is ready. Add NuGet packages to enhance functionality."
+                              : `Your ${config.architecture} architecture is configured. Move to the Dependencies tab to add NuGet packages.`}
                           </Text>
-                          <Button 
-                            colorScheme="blue" 
+                          <Button
+                            colorScheme="blue"
                             size="sm"
                             onClick={() => setActiveTab(1)}
                             rightIcon={<ArrowRight size={14} />}
                           >
-                            Configure Dependencies
+                            {config.architecture === "default"
+                              ? "Add Packages"
+                              : "Configure Dependencies"}
                           </Button>
                         </VStack>
                       </Box>
-                    )}
+                    ) : null}
                   </VStack>
                 </Grid>
               </TabPanel>
@@ -281,9 +342,13 @@ function App() {
                   <Alert status="warning" borderRadius="lg">
                     <AlertIcon />
                     <AlertDescription>
-                      Please complete the basic configuration first. You need to:
-                      <br />• Enter a project name
-                      <br />• Select an architecture (Clean, DDD, Hexagonal, or Onion)
+                      <VStack align="start" spacing={2}>
+                        <Text fontWeight="bold">
+                          Dependencies tab is locked. You need to:
+                        </Text>
+                        <Text>• Complete the basic configuration</Text>
+                        <Text>• Save your configuration first</Text>
+                      </VStack>
                     </AlertDescription>
                   </Alert>
                 )}
@@ -291,39 +356,67 @@ function App() {
 
               {/* Preview & Export Tab */}
               <TabPanel p={0} pt={6}>
-                <Grid
-                  templateColumns={{ base: "1fr", lg: "repeat(2, 1fr)" }}
-                  gap={8}
-                >
-                  <VStack spacing={8} align="stretch">
-                    <ProjectPreview />
-                  </VStack>
+                {canAccessExport() ? (
+                  <Grid
+                    templateColumns={{ base: "1fr", lg: "repeat(2, 1fr)" }}
+                    gap={8}
+                  >
+                    <VStack spacing={8} align="stretch">
+                      <ProjectPreview />
+                    </VStack>
 
-                  <VStack spacing={8} align="stretch">
-                    <JsonOutput />
-                    
-                    {/* Summary Stats */}
-                    {isBasicConfigValid() && (
-                      <Box p={4} bg="green.50" borderRadius="lg" borderWidth="1px" borderColor="green.200">
+                    <VStack spacing={8} align="stretch">
+                      <JsonOutput />
+
+                      {/* Summary Stats */}
+                      <Box
+                        p={4}
+                        bg="green.50"
+                        borderRadius="lg"
+                        borderWidth="1px"
+                        borderColor="green.200"
+                      >
                         <VStack spacing={3}>
                           <Icon as={CheckCircle} size={24} color="green.500" />
-                          <Text textAlign="center" fontWeight="medium" color="green.700">
+                          <Text
+                            textAlign="center"
+                            fontWeight="medium"
+                            color="green.700"
+                          >
                             Configuration Complete
                           </Text>
                           <VStack spacing={1} fontSize="sm" color="green.600">
                             <Text>• Architecture: {config.architecture}</Text>
-                            <Text>• Database: {config.database}</Text>
-                            <Text>• Features: {Object.values(config.features).filter(Boolean).length}</Text>
-                            <Text>• Projects: {config.selectedPackages ? Object.keys(config.selectedPackages).length : 0}</Text>
-                            <Text>• Total Packages: {config.selectedPackages ? 
-                              Object.values(config.selectedPackages).reduce((sum, packages) => sum + packages.length, 0) : 0
-                            }</Text>
+                            <Text>• .NET Version: {config.dotnetVersion}</Text>
+                            <Text>• Project Type: {config.type}</Text>
+                            <Text>
+                              • Total Packages:{" "}
+                              {config.selectedPackages
+                                ? Object.values(config.selectedPackages).reduce(
+                                    (sum, packages) => sum + packages.length,
+                                    0
+                                  )
+                                : 0}
+                            </Text>
                           </VStack>
                         </VStack>
                       </Box>
-                    )}
-                  </VStack>
-                </Grid>
+                    </VStack>
+                  </Grid>
+                ) : (
+                  <Alert status="warning" borderRadius="lg">
+                    <AlertIcon />
+                    <AlertDescription>
+                      <VStack align="start" spacing={2}>
+                        <Text fontWeight="bold">
+                          Export tab is locked. You need to:
+                        </Text>
+                        <Text>• Complete the basic configuration</Text>
+                        <Text>• Save your configuration first</Text>
+                      </VStack>
+                    </AlertDescription>
+                  </Alert>
+                )}
               </TabPanel>
             </TabPanels>
           </Tabs>

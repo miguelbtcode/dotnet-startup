@@ -1,8 +1,13 @@
 // src/types/project.ts
-export type ProjectType = 'webapi' | 'mvc' | 'blazor' | 'console' | 'classlib';
-export type DotNetVersion = '6.0' | '7.0' | '8.0' | '9.0';
-export type Architecture = 'default' | 'clean' | 'ddd' | 'hexagonal' | 'onion';
-export type Database = 'sqlserver' | 'postgresql' | 'mysql' | 'sqlite' | 'inmemory' | 'none';
+export type ProjectType = "webapi" | "mvc" | "blazor" | "console" | "classlib";
+export type DotNetVersion = "6.0" | "7.0" | "8.0" | "9.0";
+export type Architecture = "default" | "clean" | "ddd" | "hexagonal" | "onion";
+export type Database =
+  | "none"
+  | "sqlserver"
+  | "mysql"
+  | "postgresql"
+  | "mongodb";
 
 export interface NuGetDependency {
   id: string;
@@ -19,7 +24,12 @@ export interface ProjectStructure {
   dependencies?: string[];
   nugetDependencies?: NuGetDependency[];
   isCore?: boolean; // Para identificar proyectos centrales
-  layer?: 'domain' | 'application' | 'infrastructure' | 'presentation' | 'shared';
+  layer?:
+    | "domain"
+    | "application"
+    | "infrastructure"
+    | "presentation"
+    | "shared";
 }
 
 export interface ArchitectureInfo {
@@ -34,16 +44,18 @@ export interface ProjectConfig {
   dotnetVersion: DotNetVersion;
   architecture: Architecture;
   database: Database;
-  features: {
-    jwt: boolean;
-    swagger: boolean;
-    docker: boolean;
-    testing: boolean;
-    cors: boolean;
-    logging: boolean;
-    healthChecks: boolean;
-  };
   selectedPackages?: { [projectName: string]: NuGetDependency[] }; // Dependencias por proyecto
+
+  // Legacy fields for backward compatibility (will be removed in future versions)
+  features?: {
+    jwt?: boolean;
+    swagger?: boolean;
+    docker?: boolean;
+    testing?: boolean;
+    cors?: boolean;
+    logging?: boolean;
+    healthChecks?: boolean;
+  };
 }
 
 export interface DependencyValidation {

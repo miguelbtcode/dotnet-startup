@@ -1,4 +1,4 @@
-import React from 'react';
+import React from "react";
 import {
   Box,
   Button,
@@ -7,9 +7,9 @@ import {
   useClipboard,
   useToast,
   VStack,
-} from '@chakra-ui/react';
-import { useProjectStore } from '../store/projectStore';
-import { Download, Copy } from 'lucide-react';
+} from "@chakra-ui/react";
+import { useProjectStore } from "../store/projectStore";
+import { Download, Copy } from "lucide-react";
 
 export const JsonOutput: React.FC = () => {
   const { config } = useProjectStore();
@@ -19,16 +19,18 @@ export const JsonOutput: React.FC = () => {
   const handleCopy = () => {
     onCopy();
     toast({
-      title: 'Copied to clipboard',
-      status: 'success',
+      title: "Copied to clipboard",
+      status: "success",
       duration: 2000,
     });
   };
 
   const handleDownload = () => {
-    const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify(config, null, 2)], {
+      type: "application/json",
+    });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
     a.download = `${config.name}-config.json`;
     document.body.appendChild(a);

@@ -1,87 +1,162 @@
 // src/components/ProjectDependenciesManager.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
 import {
-  Box,
   VStack,
-  HStack,
-  Text,
-  Badge,
-  Button,
-  Tabs,
-  TabList,
-  Tab,
-  TabPanels,
-  TabPanel,
   Alert,
   AlertIcon,
   AlertTitle,
   AlertDescription,
-  Accordion,
-  AccordionItem,
-  AccordionButton,
-  AccordionPanel,
-  AccordionIcon,
-  Tooltip,
-  Icon,
-  Flex,
-  Divider,
-  useToast,
   SimpleGrid,
-  Input,
-  InputGroup,
-  InputLeftElement,
-  Spinner,
-  List,
-  ListItem,
-  ListIcon,
-  IconButton,
+  useToast,
   useDisclosure,
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalHeader,
-  ModalBody,
-  ModalCloseButton,
-} from '@chakra-ui/react';
-import {
-  Package,
-  Layers,
-  Plus,
-  Trash2,
-  Search,
-  Download,
-  Shield,
-  GitBranch,
-  ChevronRight,
-  AlertTriangle,
-  CheckCircle,
-  Info,
-  Star,
-} from 'lucide-react';
-import { useProjectStore } from '../store/projectStore';
-import { getArchitectureInfo } from '../utils/architectureUtils';
-import { nugetService } from '../services/NuGetService';
-import { NuGetPackage } from '../types/nuget';
-import { NuGetDependency } from '../types/project';
-import { useDebounce } from '../hooks/useDebounce';
+  Box,
+} from "@chakra-ui/react";
+import { useProjectStore } from "../store/projectStore";
+import { getArchitectureInfo } from "../utils/architectureUtils";
+import { NuGetPackage } from "../types/nuget";
+import { NuGetDependency } from "../types/project";
+import { TemplateService } from "./dependencies/TemplateService";
+
+// Import the new modular components
+import { ProjectStructureCard } from "./dependencies/ProjectStructureCard";
+import { PackageSearchModal } from "./dependencies/PackageSearchModal";
+import { TemplateSelectionModal } from "./dependencies/TemplateSelectionModal";
+import { TemplateRecommendationsCard } from "./dependencies/TemplateRecommendationsCard";
+import { DebugStateViewer } from "./debug/DebugStateViewer";
 
 export const ProjectDependenciesManager: React.FC = () => {
   const { config, setConfig } = useProjectStore();
-  const [selectedProject, setSelectedProject] = useState<string>('');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<NuGetPackage[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState(0);
-  const { isOpen, onOpen, onClose } = useDisclosure();
+  const [selectedProject, setSelectedProject] = useState<string>("");
+  const [selectedTemplate, setSelectedTemplate] = useState<{
+    [projectName: string]: { [packageId: string]: boolean };
+  }>({});
+
+  const {
+    isOpen: isSearchOpen,
+    onOpen: onSearchOpen,
+    onClose: onSearchClose,
+  } = useDisclosure();
+  const {
+    isOpen: isTemplateOpen,
+    onOpen: onTemplateOpen,
+    onClose: onTemplateClose,
+  } = useDisclosure();
+
   const toast = useToast();
-  
-  const debouncedSearch = useDebounce(searchQuery, 300);
+
   const architectureInfo = getArchitectureInfo(
-    config.architecture, 
-    config.name || 'MyProject',
+    config.architecture,
+    config.name || "MyProject",
+    config.type
+  );
+
+  // Get recommended templates using the service
+  const recommendedTemplates = TemplateService.getRecommendedTemplates(
     config.type,
+    config.architecture,
+    config.dotnetVersion,
     config.database
   );
+
+  /**
+   * Maps template project names to actual project names
+   * Template names: Domain, Application, Infrastructure, API, Shared, Web, Core, MonolithProject, etc.
+   * Actual names: TechMart.Domain, TechMart.Application, TechMart.Infrastructure, TechMart.API, TechMart.Shared, TechMart
+   */
+  const mapTemplateNameToProjectName = (templateName: string): string => {
+    const projectBaseName = config.name || "MyProject";
+
+    // For monolithic projects (default architecture)
+    if (
+      templateName === "MonolithProject" ||
+      templateName === projectBaseName
+    ) {
+      return projectBaseName;
+    }
+
+    // For any other template name, try to find actual project that matches
+    // First, try exact match
+    const exactMatch = architectureInfo.projects.find(
+      (project) => project.name === templateName
+    );
+    if (exactMatch) {
+      return exactMatch.name;
+    }
+
+    // Then try to find project that ends with template name
+    const suffixMatch = architectureInfo.projects.find((project) => {
+      return project.name.endsWith(`.${templateName}`);
+    });
+    if (suffixMatch) {
+      return suffixMatch.name;
+    }
+
+    // If no match found, construct the expected name: ProjectBaseName.TemplateName
+    return `${projectBaseName}.${templateName}`;
+  };
+
+  /**
+   * Maps actual project names back to template names for reverse lookup
+   * More generic approach - extracts the suffix after the last dot, or returns MonolithProject for base name
+   */
+  const mapProjectNameToTemplateName = (projectName: string): string => {
+    const projectBaseName = config.name || "MyProject";
+
+    // For monolithic projects (base name only)
+    if (projectName === projectBaseName) {
+      return "MonolithProject";
+    }
+
+    // For any project with dots, extract the suffix
+    // e.g., "TechMart.Domain" -> "Domain", "TechMart.Shared" -> "Shared"
+    const parts = projectName.split(".");
+    if (parts.length > 1) {
+      return parts[parts.length - 1]; // Get the last part after the last dot
+    }
+
+    // If no dots, return as-is (might be a single-word project name)
+    return projectName;
+  };
+
+  // Debug: Log template and project name matching
+  console.log(
+    "🏗️ Architecture Info Projects:",
+    architectureInfo.projects.map((p) => ({
+      name: p.name,
+      layer: p.layer,
+      description: p.description,
+    }))
+  );
+  console.log(
+    "📋 Available Template Projects:",
+    Object.keys(recommendedTemplates)
+  );
+
+  // Test the mapping function
+  Object.keys(recommendedTemplates).forEach((templateName) => {
+    const mappedName = mapTemplateNameToProjectName(templateName);
+    console.log(`🔄 Template Mapping: "${templateName}" -> "${mappedName}"`);
+  });
+
+  console.log(
+    "🔍 Template Matching Check:",
+    architectureInfo.projects.map((project) => ({
+      projectName: project.name,
+      templateName: mapProjectNameToTemplateName(project.name),
+      hasTemplate:
+        !!recommendedTemplates[mapProjectNameToTemplateName(project.name)],
+      templatePackages:
+        recommendedTemplates[mapProjectNameToTemplateName(project.name)]
+          ?.length || 0,
+    }))
+  );
+
+  // Debug: Log current state
+  console.log("🔍 Dependencies Manager State:", {
+    selectedPackages: config.selectedPackages,
+    templatesAvailable: Object.keys(recommendedTemplates).length,
+    projects: architectureInfo.projects.map((p) => p.name),
+  });
 
   useEffect(() => {
     if (architectureInfo.projects.length > 0 && !selectedProject) {
@@ -89,54 +164,32 @@ export const ProjectDependenciesManager: React.FC = () => {
     }
   }, [architectureInfo.projects, selectedProject]);
 
-  useEffect(() => {
-    const searchPackages = async () => {
-      if (!debouncedSearch.trim()) {
-        setSearchResults([]);
-        return;
-      }
+  const addPackageToProject = (
+    projectName: string,
+    nugetPackage: NuGetPackage
+  ) => {
+    console.log("🚀 Adding package to project:", {
+      projectName,
+      package: nugetPackage.id,
+    });
 
-      setLoading(true);
-      try {
-        const result = await nugetService.searchPackages(debouncedSearch, {
-          take: 10,
-          prerelease: false
-        });
-        setSearchResults(result.packages);
-      } catch (error) {
-        toast({
-          title: 'Error searching packages',
-          description: 'Please try again later',
-          status: 'error',
-          duration: 3000,
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    searchPackages();
-  }, [debouncedSearch, toast]);
-
-  const addPackageToProject = (projectName: string, nugetPackage: NuGetPackage) => {
     const dependency: NuGetDependency = {
       id: nugetPackage.id,
       version: nugetPackage.version,
       description: nugetPackage.description,
       verified: nugetPackage.verified,
-      addedAt: new Date().toISOString()
+      addedAt: new Date().toISOString(),
     };
 
     const currentPackages = config.selectedPackages || {};
     const projectPackages = currentPackages[projectName] || [];
-    
-    // Check if package already exists
-    const existingPackage = projectPackages.find(p => p.id === dependency.id);
+
+    const existingPackage = projectPackages.find((p) => p.id === dependency.id);
     if (existingPackage) {
       toast({
-        title: 'Package already added',
+        title: "Package already added",
         description: `${dependency.id} is already in ${projectName}`,
-        status: 'warning',
+        status: "warning",
         duration: 2000,
       });
       return;
@@ -144,224 +197,236 @@ export const ProjectDependenciesManager: React.FC = () => {
 
     const updatedPackages = {
       ...currentPackages,
-      [projectName]: [...projectPackages, dependency]
+      [projectName]: [...projectPackages, dependency],
     };
 
+    console.log("📦 Updating packages state:", updatedPackages);
     setConfig({ selectedPackages: updatedPackages });
-    setSearchQuery('');
-    onClose();
 
     toast({
-      title: 'Package added',
+      title: "Package added",
       description: `${dependency.id} added to ${projectName}`,
-      status: 'success',
+      status: "success",
       duration: 2000,
     });
   };
 
   const removePackageFromProject = (projectName: string, packageId: string) => {
+    console.log("🗑️ Removing package from project:", {
+      projectName,
+      packageId,
+    });
+
     const currentPackages = config.selectedPackages || {};
     const projectPackages = currentPackages[projectName] || [];
-    
-    const updatedProjectPackages = projectPackages.filter(p => p.id !== packageId);
+
+    const updatedProjectPackages = projectPackages.filter(
+      (p) => p.id !== packageId
+    );
     const updatedPackages = {
       ...currentPackages,
-      [projectName]: updatedProjectPackages
+      [projectName]: updatedProjectPackages,
     };
 
+    console.log("📦 Updated packages after removal:", updatedPackages);
     setConfig({ selectedPackages: updatedPackages });
 
     toast({
-      title: 'Package removed',
+      title: "Package removed",
       description: `${packageId} removed from ${projectName}`,
-      status: 'info',
+      status: "info",
       duration: 2000,
     });
   };
 
-  const addRecommendedPackage = (projectName: string, packageName: string) => {
-    setSearchQuery(packageName);
+  const handleAddPackage = (projectName: string) => {
     setSelectedProject(projectName);
-    onOpen();
+    onSearchOpen();
   };
 
-  const getLayerColor = (layer?: string) => {
-    switch (layer) {
-      case 'domain': return 'purple';
-      case 'application': return 'blue';
-      case 'infrastructure': return 'green';
-      case 'presentation': return 'orange';
-      case 'shared': return 'gray';
-      default: return 'blue';
-    }
-  };
+  const applyTemplate = (packageVersions: {
+    [projectName: string]: { [packageId: string]: string };
+  }) => {
+    console.log("🎯 Starting template application...");
+    console.log("🎯 Selected template state:", selectedTemplate);
+    console.log("🎯 Package versions:", packageVersions);
+    console.log("🎯 Available templates:", recommendedTemplates);
+    console.log("🎯 Current config.selectedPackages:", config.selectedPackages);
 
-  const getLayerIcon = (layer?: string) => {
-    switch (layer) {
-      case 'domain': return Layers;
-      case 'application': return GitBranch;
-      case 'infrastructure': return Package;
-      case 'presentation': return ChevronRight;
-      case 'shared': return Star;
-      default: return Package;
-    }
-  };
+    const currentPackages = config.selectedPackages || {};
+    let updatedPackages = { ...currentPackages };
+    let addedCount = 0;
+    let skippedCount = 0;
 
-  const ProjectStructureCard: React.FC<{ project: any }> = ({ project }) => {
-    const projectPackages = config.selectedPackages?.[project.name] || [];
-    const recommendedPackages = architectureInfo.recommendedPackages?.[project.name] || [];
-    const layerColor = getLayerColor(project.layer);
-    const LayerIcon = getLayerIcon(project.layer);
-
-    return (
-      <Box
-        borderWidth="1px"
-        borderRadius="lg"
-        p={4}
-        bg="white"
-        shadow="sm"
-        borderLeftWidth="4px"
-        borderLeftColor={`${layerColor}.400`}
-        _hover={{ shadow: 'md' }}
-        transition="all 0.2s"
-      >
-        <VStack align="stretch" spacing={3}>
-          <Flex justify="space-between" align="center">
-            <HStack spacing={2}>
-              <Icon as={LayerIcon} color={`${layerColor}.500`} />
-              <Text fontWeight="bold" color={`${layerColor}.700`}>
-                {project.name}
-              </Text>
-              {project.isCore && (
-                <Badge colorScheme={layerColor} variant="subtle" size="sm">
-                  Core
-                </Badge>
-              )}
-            </HStack>
-            <Badge colorScheme="gray" variant="outline" size="sm">
-              {project.layer || 'general'}
-            </Badge>
-          </Flex>
-
-          <Text fontSize="sm" color="gray.600">
-            {project.description}
-          </Text>
-
-          {/* Folders */}
-          <Box>
-            <Text fontSize="xs" fontWeight="semibold" color="gray.500" mb={1}>
-              FOLDERS ({project.folders.length})
-            </Text>
-            <Flex wrap="wrap" gap={1}>
-              {project.folders.map((folder: string, index: number) => (
-                <Badge key={index} variant="outline" size="sm" colorScheme="gray">
-                  📁 {folder}
-                </Badge>
-              ))}
-            </Flex>
-          </Box>
-
-          {/* Dependencies on other projects */}
-          {project.dependencies && project.dependencies.length > 0 && (
-            <Box>
-              <Text fontSize="xs" fontWeight="semibold" color="gray.500" mb={1}>
-                PROJECT DEPENDENCIES
-              </Text>
-              <VStack align="start" spacing={1}>
-                {project.dependencies.map((dep: string, index: number) => (
-                  <Badge key={index} colorScheme="purple" variant="outline" size="sm">
-                    {dep}
-                  </Badge>
-                ))}
-              </VStack>
-            </Box>
-          )}
-
-          {/* NuGet Packages */}
-          <Box>
-            <Flex justify="space-between" align="center" mb={2}>
-              <Text fontSize="xs" fontWeight="semibold" color="gray.500">
-                NUGET PACKAGES ({projectPackages.length})
-              </Text>
-              <Button
-                size="xs"
-                colorScheme={layerColor}
-                leftIcon={<Plus size={12} />}
-                onClick={() => {
-                  setSelectedProject(project.name);
-                  onOpen();
-                }}
-              >
-                Add Package
-              </Button>
-            </Flex>
-
-            {projectPackages.length > 0 ? (
-              <VStack align="stretch" spacing={1}>
-                {projectPackages.map((pkg) => (
-                  <Flex
-                    key={pkg.id}
-                    justify="space-between"
-                    align="center"
-                    p={2}
-                    bg="gray.50"
-                    borderRadius="md"
-                    fontSize="sm"
-                  >
-                    <HStack spacing={2}>
-                      <Icon as={Package} size={12} color={`${layerColor}.500`} />
-                      <Text fontWeight="medium">{pkg.id}</Text>
-                      <Badge size="xs" colorScheme="gray">
-                        v{pkg.version}
-                      </Badge>
-                      {pkg.verified && (
-                        <Icon as={Shield} size={12} color="green.500" />
-                      )}
-                    </HStack>
-                    <IconButton
-                      size="xs"
-                      variant="ghost"
-                      colorScheme="red"
-                      icon={<Trash2 size={12} />}
-                      aria-label="Remove package"
-                      onClick={() => removePackageFromProject(project.name, pkg.id)}
-                    />
-                  </Flex>
-                ))}
-              </VStack>
-            ) : (
-              <Text fontSize="xs" color="gray.400" textAlign="center" py={2}>
-                No packages added yet
-              </Text>
-            )}
-          </Box>
-
-          {/* Recommended Packages */}
-          {recommendedPackages.length > 0 && (
-            <Box>
-              <Text fontSize="xs" fontWeight="semibold" color={`${layerColor}.600`} mb={1}>
-                RECOMMENDED PACKAGES
-              </Text>
-              <Flex wrap="wrap" gap={1}>
-                {recommendedPackages.map((pkgName, index) => (
-                  <Button
-                    key={index}
-                    size="xs"
-                    variant="outline"
-                    colorScheme={layerColor}
-                    leftIcon={<Plus size={10} />}
-                    onClick={() => addRecommendedPackage(project.name, pkgName)}
-                  >
-                    {pkgName}
-                  </Button>
-                ))}
-              </Flex>
-            </Box>
-          )}
-        </VStack>
-      </Box>
+    // Debug: Check what we're iterating over
+    console.log(
+      "🔄 Iterating over selectedTemplate entries:",
+      Object.entries(selectedTemplate)
     );
+
+    Object.entries(selectedTemplate).forEach(
+      ([templateProjectName, packages]) => {
+        console.log(`📁 Processing template project: ${templateProjectName}`);
+
+        // Map template name to actual project name
+        const actualProjectName =
+          mapTemplateNameToProjectName(templateProjectName);
+        console.log(
+          `🔄 Mapped "${templateProjectName}" -> "${actualProjectName}"`
+        );
+
+        console.log(`📦 Packages for ${templateProjectName}:`, packages);
+
+        Object.entries(packages).forEach(([packageId, isSelected]) => {
+          console.log(
+            `  📦 Package ${packageId}: ${
+              isSelected ? "SELECTED" : "NOT SELECTED"
+            }`
+          );
+
+          if (isSelected) {
+            const template = recommendedTemplates[templateProjectName]?.find(
+              (p) => p.id === packageId
+            );
+            console.log(`  🔍 Template found for ${packageId}:`, template);
+
+            if (template) {
+              const projectPackages = updatedPackages[actualProjectName] || [];
+              const existingPackage = projectPackages.find(
+                (p) => p.id === packageId
+              );
+
+              console.log(
+                `  📋 Current packages in ${actualProjectName}:`,
+                projectPackages.map((p) => p.id)
+              );
+              console.log(
+                `  🔍 Existing package check for ${packageId}:`,
+                existingPackage
+              );
+
+              if (!existingPackage) {
+                // Use the selected version from packageVersions, fallback to template version
+                const selectedVersion =
+                  packageVersions[templateProjectName]?.[packageId] ||
+                  template.version;
+
+                const dependency: NuGetDependency = {
+                  id: template.id,
+                  version: selectedVersion,
+                  description: template.description,
+                  verified: true,
+                  addedAt: new Date().toISOString(),
+                };
+
+                // Ensure the project array exists
+                if (!updatedPackages[actualProjectName]) {
+                  updatedPackages[actualProjectName] = [];
+                }
+
+                updatedPackages[actualProjectName] = [
+                  ...projectPackages,
+                  dependency,
+                ];
+                addedCount++;
+
+                console.log(
+                  `  ✅ Added package: ${packageId}@${selectedVersion} to ${actualProjectName} (was ${templateProjectName})`
+                );
+                console.log(
+                  `  📋 Updated packages for ${actualProjectName}:`,
+                  updatedPackages[actualProjectName]
+                );
+              } else {
+                skippedCount++;
+                console.log(
+                  `  ⏭️ Skipped existing package: ${packageId} in ${actualProjectName}`
+                );
+              }
+            } else {
+              console.log(
+                `  ❌ No template found for package ${packageId} in template project ${templateProjectName}`
+              );
+              console.log(
+                `  🔍 Available templates for ${templateProjectName}:`,
+                recommendedTemplates[templateProjectName]
+              );
+            }
+          }
+        });
+      }
+    );
+
+    console.log("📦 Final updated packages state:", updatedPackages);
+    console.log("📊 Summary - Added:", addedCount, "Skipped:", skippedCount);
+
+    // Force a complete re-render by creating a completely new object
+    const finalPackages = JSON.parse(JSON.stringify(updatedPackages));
+
+    console.log("🏪 Calling setConfig with:", {
+      selectedPackages: finalPackages,
+    });
+
+    // Update the store with new packages
+    setConfig({ selectedPackages: finalPackages });
+
+    // Reset template selection and close modal
+    setSelectedTemplate({});
+    onTemplateClose();
+
+    // Show detailed feedback
+    if (addedCount > 0) {
+      toast({
+        title: "Template applied successfully!",
+        description: `${addedCount} packages added to your projects${
+          skippedCount > 0 ? `, ${skippedCount} already existed` : ""
+        }`,
+        status: "success",
+        duration: 4000,
+        isClosable: true,
+      });
+    } else if (skippedCount > 0) {
+      toast({
+        title: "No new packages added",
+        description: `All ${skippedCount} selected packages already exist in your projects`,
+        status: "info",
+        duration: 3000,
+      });
+    } else {
+      toast({
+        title: "No packages selected",
+        description: "Please select packages to apply",
+        status: "warning",
+        duration: 3000,
+      });
+    }
   };
+
+  const toggleTemplatePackage = (projectName: string, packageId: string) => {
+    setSelectedTemplate((prev) => ({
+      ...prev,
+      [projectName]: {
+        ...prev[projectName],
+        [packageId]: !prev[projectName]?.[packageId],
+      },
+    }));
+  };
+
+  const selectAllForProject = (projectName: string) => {
+    const packages = recommendedTemplates[projectName] || [];
+    setSelectedTemplate((prev) => ({
+      ...prev,
+      [projectName]: packages.reduce(
+        (acc, pkg) => ({
+          ...acc,
+          [pkg.id]: true,
+        }),
+        {}
+      ),
+    }));
+  };
+
+  const hasAnyRecommendations = Object.keys(recommendedTemplates).length > 0;
 
   return (
     <VStack spacing={6} align="stretch">
@@ -371,95 +436,85 @@ export const ProjectDependenciesManager: React.FC = () => {
         <Box>
           <AlertTitle>Project Dependencies</AlertTitle>
           <AlertDescription>
-            Configure NuGet packages for each project in your {config.architecture} architecture.
-            Click "Add Package" to search and install dependencies.
+            Configure NuGet packages for your {config.architecture}{" "}
+            architecture. Use recommended templates or search for specific
+            packages.
           </AlertDescription>
         </Box>
       </Alert>
 
+      {/* Template Recommendations Card */}
+      <TemplateRecommendationsCard
+        config={config}
+        hasRecommendations={hasAnyRecommendations}
+        onOpenTemplate={onTemplateOpen}
+      />
+
       {/* Project Structure Grid */}
       <SimpleGrid columns={{ base: 1, lg: 2, xl: 3 }} spacing={4}>
-        {architectureInfo.projects.map((project, index) => (
-          <ProjectStructureCard key={index} project={project} />
-        ))}
+        {architectureInfo.projects.map((project, index) => {
+          const projectPackages = config.selectedPackages?.[project.name] || [];
+          const hasRecommendations =
+            recommendedTemplates[project.name]?.length > 0;
+
+          console.log(`🏗️ Rendering card for ${project.name}:`, {
+            packagesCount: projectPackages.length,
+            packages: projectPackages.map((p) => `${p.id}@${p.version}`),
+            availableKeys: Object.keys(config.selectedPackages || {}),
+            exactMatch: config.selectedPackages?.[project.name] !== undefined,
+          });
+
+          // Debug: Check if there are packages with similar names
+          const similarKeys = Object.keys(config.selectedPackages || {}).filter(
+            (key) =>
+              key.includes(project.name.split(".")[0]) ||
+              project.name.includes(key)
+          );
+
+          if (similarKeys.length > 0) {
+            console.log(
+              `🔍 Found similar keys for ${project.name}:`,
+              similarKeys
+            );
+          }
+
+          return (
+            <Box key={`${project.name}-${index}-${projectPackages.length}`}>
+              <ProjectStructureCard
+                project={project}
+                packages={projectPackages}
+                hasRecommendations={hasRecommendations}
+                onAddPackage={() => handleAddPackage(project.name)}
+                onOpenTemplate={onTemplateOpen}
+                onRemovePackage={(packageId) =>
+                  removePackageFromProject(project.name, packageId)
+                }
+              />
+            </Box>
+          );
+        })}
       </SimpleGrid>
 
       {/* Package Search Modal */}
-      <Modal isOpen={isOpen} onClose={onClose} size="xl">
-        <ModalOverlay />
-        <ModalContent>
-          <ModalHeader>
-            Add Package to {selectedProject}
-          </ModalHeader>
-          <ModalCloseButton />
-          <ModalBody pb={6}>
-            <VStack spacing={4} align="stretch">
-              <InputGroup>
-                <InputLeftElement pointerEvents="none">
-                  <Icon as={Search} color="gray.400" />
-                </InputLeftElement>
-                <Input
-                  placeholder="Search NuGet packages..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-              </InputGroup>
+      <PackageSearchModal
+        isOpen={isSearchOpen}
+        onClose={onSearchClose}
+        selectedProject={selectedProject}
+        onAddPackage={addPackageToProject}
+      />
 
-              <Box maxH="400px" overflowY="auto">
-                {loading ? (
-                  <Flex justify="center" py={8}>
-                    <Spinner color="blue.500" />
-                  </Flex>
-                ) : searchResults.length > 0 ? (
-                  <VStack spacing={2} align="stretch">
-                    {searchResults.map((pkg) => (
-                      <Box
-                        key={pkg.id}
-                        p={3}
-                        borderWidth="1px"
-                        borderRadius="md"
-                        _hover={{ bg: 'gray.50' }}
-                        cursor="pointer"
-                        onClick={() => addPackageToProject(selectedProject, pkg)}
-                      >
-                        <Flex justify="space-between" align="start">
-                          <VStack align="start" spacing={1} flex="1">
-                            <HStack>
-                              <Text fontWeight="medium">{pkg.id}</Text>
-                              <Badge size="sm">v{pkg.version}</Badge>
-                              {pkg.verified && (
-                                <Icon as={Shield} size={14} color="green.500" />
-                              )}
-                            </HStack>
-                            <Text fontSize="sm" color="gray.600" noOfLines={2}>
-                              {pkg.description}
-                            </Text>
-                            <HStack fontSize="xs" color="gray.500">
-                              <Icon as={Download} size={12} />
-                              <Text>{pkg.totalDownloads.toLocaleString()} downloads</Text>
-                            </HStack>
-                          </VStack>
-                          <Button size="sm" colorScheme="blue" leftIcon={<Plus size={14} />}>
-                            Add
-                          </Button>
-                        </Flex>
-                      </Box>
-                    ))}
-                  </VStack>
-                ) : searchQuery ? (
-                  <Text textAlign="center" color="gray.500" py={8}>
-                    No packages found for "{searchQuery}"
-                  </Text>
-                ) : (
-                  <Text textAlign="center" color="gray.500" py={8}>
-                    Start typing to search for packages
-                  </Text>
-                )}
-              </Box>
-            </VStack>
-          </ModalBody>
-        </ModalContent>
-      </Modal>
+      {/* Template Selection Modal */}
+      <TemplateSelectionModal
+        isOpen={isTemplateOpen}
+        onClose={onTemplateClose}
+        config={config}
+        architectureInfo={architectureInfo}
+        recommendedTemplates={recommendedTemplates}
+        selectedTemplate={selectedTemplate}
+        onTogglePackage={toggleTemplatePackage}
+        onSelectAllForProject={selectAllForProject}
+        onApplyTemplate={applyTemplate}
+      />
     </VStack>
   );
 };
