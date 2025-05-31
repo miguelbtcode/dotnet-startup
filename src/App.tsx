@@ -348,10 +348,10 @@ function App() {
                 {canAccessDependencies() ? (
                   <ProjectDependenciesManager />
                 ) : (
-                  <Alert status="warning" borderRadius="lg">
+                  <Alert status="warning\" borderRadius="lg">
                     <AlertIcon />
                     <AlertDescription>
-                      <VStack align="start" spacing={2}>
+                      <VStack align="start\" spacing={2}>
                         <Text fontWeight="bold">
                           Dependencies tab is locked. You need to:
                         </Text>
@@ -368,10 +368,10 @@ function App() {
                 {canAccessDependencies() ? (
                   <FeaturesTab />
                 ) : (
-                  <Alert status="warning" borderRadius="lg">
+                  <Alert status="warning\" borderRadius="lg">
                     <AlertIcon />
                     <AlertDescription>
-                      <VStack align="start" spacing={2}>
+                      <VStack align="start\" spacing={2}>
                         <Text fontWeight="bold">
                           Features tab is locked. You need to:
                         </Text>
