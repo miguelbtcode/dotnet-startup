@@ -31,11 +31,13 @@ import {
   ArrowRight,
   Lock,
   Save,
+  Zap,
 } from "lucide-react";
 import { ProjectForm } from "./components/ProjectForm";
 import { ProjectPreview } from "./components/ProjectPreview";
 import { JsonOutput } from "./components/JsonOutput";
 import { ProjectDependenciesManager } from "./components/ProjectDependenciesManager";
+import { FeaturesTab } from "./components/features/FeaturesTab";
 import { useProjectStore } from "./store/projectStore";
 
 function App() {
@@ -64,7 +66,7 @@ function App() {
       return;
     }
 
-    if (index === 2 && !canAccessExport()) {
+    if (index === 2 && !canAccessDependencies()) {
       toast({
         title: "Save Configuration Required",
         description: "Please save your configuration first",
@@ -85,8 +87,9 @@ function App() {
           ? "complete"
           : "current";
       case 1:
-        return canAccessDependencies() ? "available" : "disabled";
       case 2:
+        return canAccessDependencies() ? "available" : "disabled";
+      case 3:
         return canAccessExport() ? "available" : "disabled";
       default:
         return "disabled";
@@ -271,6 +274,12 @@ function App() {
               />
               <TabWithStatus
                 index={2}
+                icon={Zap}
+                label="Features"
+                description="Advanced features & patterns"
+              />
+              <TabWithStatus
+                index={3}
                 icon={FileText}
                 label="Preview & Export"
                 description="Review & download config"
@@ -345,6 +354,26 @@ function App() {
                       <VStack align="start" spacing={2}>
                         <Text fontWeight="bold">
                           Dependencies tab is locked. You need to:
+                        </Text>
+                        <Text>• Complete the basic configuration</Text>
+                        <Text>• Save your configuration first</Text>
+                      </VStack>
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </TabPanel>
+
+              {/* Features Tab */}
+              <TabPanel p={0} pt={6}>
+                {canAccessDependencies() ? (
+                  <FeaturesTab />
+                ) : (
+                  <Alert status="warning" borderRadius="lg">
+                    <AlertIcon />
+                    <AlertDescription>
+                      <VStack align="start" spacing={2}>
+                        <Text fontWeight="bold">
+                          Features tab is locked. You need to:
                         </Text>
                         <Text>• Complete the basic configuration</Text>
                         <Text>• Save your configuration first</Text>
