@@ -1,3 +1,4 @@
+// src/components/ProjectPreview.tsx
 import React, { useState, useEffect } from "react";
 import {
   Box,
@@ -14,10 +15,15 @@ import {
   SimpleGrid,
   Circle,
   Container,
+  Spinner,
+  Alert,
+  AlertIcon,
+  AlertDescription,
 } from "@chakra-ui/react";
 import { keyframes } from "@emotion/react";
 import { useProjectStore } from "../store/projectStore";
-import { getArchitectureInfo } from "../utils/architectureUtils";
+import { useArchitectures } from "../hooks/useArchitectures";
+import { ArchitectureInfo } from "../types/project";
 import {
   ChevronLeft,
   ChevronRight,
@@ -30,6 +36,7 @@ import {
   Target,
   Settings,
   Database,
+  RefreshCw,
 } from "lucide-react";
 
 const slideIn = keyframes`
@@ -60,51 +67,102 @@ const shimmer = keyframes`
 
 export const ProjectPreview: React.FC = () => {
   const { config } = useProjectStore();
+  const { getArchitectureInfo, isApiAvailable, refetch } = useArchitectures();
+
   const [currentProjectIndex, setCurrentProjectIndex] = useState(0);
   const [isAutoPlaying, setIsAutoPlaying] = useState(true);
+  const [architectureInfo, setArchitectureInfo] =
+    useState<ArchitectureInfo | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const architectureInfo = getArchitectureInfo(
-    config.architecture,
-    config.name || "MyProject"
-  );
-  const projects = architectureInfo.projects;
-  const currentProject = projects[currentProjectIndex];
+  const cardBg = useColorModeValue("white", "gray.800");
+  const borderColor = useColorModeValue("gray.200", "gray.700");
+
+  // Cargar información de arquitectura cuando cambie la configuración
+  useEffect(() => {
+    const loadArchitectureInfo = async () => {
+      if (!config.architecture) {
+        console.log("❌ No architecture selected");
+        return;
+      }
+
+      setLoading(true);
+      setError(null);
+
+      try {
+        console.log("🔄 Loading architecture info for:", config.architecture);
+        const info = await getArchitectureInfo(config.architecture);
+        console.log("✅ Architecture info loaded:", info);
+        setArchitectureInfo(info);
+      } catch (err) {
+        const errorMessage =
+          err instanceof Error
+            ? err.message
+            : "Failed to load architecture info";
+        setError(errorMessage);
+        console.error("❌ Error loading architecture info:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadArchitectureInfo();
+  }, [config.architecture, getArchitectureInfo]);
 
   // Reset project index when architecture changes or when index is out of bounds
   useEffect(() => {
-    if (currentProjectIndex >= projects.length || currentProjectIndex < 0) {
+    if (!architectureInfo?.projects) return;
+
+    if (
+      currentProjectIndex >= architectureInfo.projects.length ||
+      currentProjectIndex < 0
+    ) {
       setCurrentProjectIndex(0);
-      setIsAutoPlaying(true); // Restart autoplay when switching architectures
+      setIsAutoPlaying(true);
     }
-  }, [config.architecture, projects.length, currentProjectIndex]);
+  }, [architectureInfo, currentProjectIndex]);
 
   // Force update when switching to default architecture
   useEffect(() => {
     if (config.architecture === "default") {
       setCurrentProjectIndex(0);
-      setIsAutoPlaying(false); // No autoplay needed for single project
+      setIsAutoPlaying(false);
     }
   }, [config.architecture]);
 
   // Auto-play carousel
   useEffect(() => {
-    if (!isAutoPlaying || projects.length <= 1) return;
+    if (
+      !isAutoPlaying ||
+      !architectureInfo?.projects ||
+      architectureInfo.projects.length <= 1
+    )
+      return;
 
     const interval = setInterval(() => {
-      setCurrentProjectIndex((prev) => (prev + 1) % projects.length);
+      setCurrentProjectIndex(
+        (prev) => (prev + 1) % architectureInfo.projects.length
+      );
     }, 4000);
 
     return () => clearInterval(interval);
-  }, [isAutoPlaying, projects.length]);
+  }, [isAutoPlaying, architectureInfo]);
 
   const nextProject = () => {
-    setCurrentProjectIndex((prev) => (prev + 1) % projects.length);
+    if (!architectureInfo?.projects) return;
+    setCurrentProjectIndex(
+      (prev) => (prev + 1) % architectureInfo.projects.length
+    );
     setIsAutoPlaying(false);
   };
 
   const prevProject = () => {
+    if (!architectureInfo?.projects) return;
     setCurrentProjectIndex(
-      (prev) => (prev - 1 + projects.length) % projects.length
+      (prev) =>
+        (prev - 1 + architectureInfo.projects.length) %
+        architectureInfo.projects.length
     );
     setIsAutoPlaying(false);
   };
@@ -167,10 +225,80 @@ export const ProjectPreview: React.FC = () => {
     }
   };
 
-  const cardBg = useColorModeValue("white", "gray.800");
-  const borderColor = useColorModeValue("gray.200", "gray.700");
+  // Loading state
+  if (loading) {
+    return (
+      <Box
+        bg={cardBg}
+        rounded="2xl"
+        shadow="2xl"
+        borderWidth="1px"
+        borderColor={borderColor}
+        p={8}
+        minH="500px"
+        display="flex"
+        alignItems="center"
+        justifyContent="center"
+      >
+        <VStack spacing={4}>
+          <Spinner size="xl" color="blue.500" thickness="4px" />
+          <Text fontSize="lg" fontWeight="medium" color="gray.500">
+            Loading architecture preview...
+          </Text>
+        </VStack>
+      </Box>
+    );
+  }
 
-  if (!currentProject) {
+  // Error state
+  if (error) {
+    return (
+      <Box
+        bg={cardBg}
+        rounded="2xl"
+        shadow="2xl"
+        borderWidth="1px"
+        borderColor={borderColor}
+        overflow="hidden"
+        minH="500px"
+      >
+        <Box p={8}>
+          <Alert status="error" borderRadius="lg">
+            <AlertIcon />
+            <Box flex="1">
+              <AlertDescription>
+                <VStack align="start" spacing={2}>
+                  <Text fontWeight="bold">
+                    Failed to load architecture preview
+                  </Text>
+                  <Text fontSize="sm">{error}</Text>
+                  <Button
+                    size="sm"
+                    leftIcon={<RefreshCw size={16} />}
+                    onClick={() => window.location.reload()}
+                    colorScheme="red"
+                    variant="outline"
+                  >
+                    Retry
+                  </Button>
+                </VStack>
+              </AlertDescription>
+            </Box>
+          </Alert>
+        </Box>
+      </Box>
+    );
+  }
+
+  // No architecture info or empty config
+  if (!architectureInfo || architectureInfo.projects.length === 0) {
+    console.log("❌ ProjectPreview - No data to show:", {
+      hasArchitectureInfo: !!architectureInfo,
+      configArchitecture: config.architecture,
+      projectsCount: architectureInfo?.projects?.length || 0,
+      architectureInfo,
+    });
+
     return (
       <Box
         bg={cardBg}
@@ -183,7 +311,52 @@ export const ProjectPreview: React.FC = () => {
         <VStack spacing={4}>
           <Icon as={Settings} boxSize={12} color="gray.400" />
           <Text fontSize="lg" fontWeight="medium" color="gray.500">
-            Configure your project to see the architecture preview
+            {!config.architecture
+              ? "Select an architecture to see the preview"
+              : !isApiAvailable
+              ? "API connection required to show architecture preview"
+              : architectureInfo?.projects?.length === 0
+              ? `No project structure defined for ${config.architecture} architecture`
+              : "Loading architecture preview..."}
+          </Text>
+          {!isApiAvailable && (
+            <Button
+              size="sm"
+              leftIcon={<RefreshCw size={16} />}
+              onClick={refetch}
+              colorScheme="blue"
+              variant="outline"
+            >
+              Retry API Connection
+            </Button>
+          )}
+          {/* Debug info */}
+          <Box fontSize="xs" color="gray.400" textAlign="center">
+            <Text>Architecture: {config.architecture || "None"}</Text>
+            <Text>API: {isApiAvailable ? "✅" : "❌"}</Text>
+            <Text>Projects: {architectureInfo?.projects?.length || 0}</Text>
+            <Text>Loading: {loading ? "⏳" : "✅"}</Text>
+          </Box>
+        </VStack>
+      </Box>
+    );
+  }
+
+  const currentProject = architectureInfo.projects[currentProjectIndex];
+  if (!currentProject) {
+    return (
+      <Box
+        bg={cardBg}
+        p={8}
+        rounded="2xl"
+        shadow="xl"
+        borderWidth="1px"
+        borderColor={borderColor}
+      >
+        <VStack spacing={4}>
+          <Icon as={Package} boxSize={12} color="gray.400" />
+          <Text fontSize="lg" fontWeight="medium" color="gray.500">
+            No projects defined for this architecture
           </Text>
         </VStack>
       </Box>
@@ -233,14 +406,27 @@ export const ProjectPreview: React.FC = () => {
           <VStack spacing={4} align="stretch">
             <Flex justify="space-between" align="center">
               <VStack align="start" spacing={1}>
-                <Text
-                  fontSize="2xl"
-                  fontWeight="bold"
-                  bgGradient="linear(to-r, blue.400, purple.500)"
-                  bgClip="text"
-                >
-                  Architecture Preview
-                </Text>
+                <HStack spacing={2}>
+                  <Text
+                    fontSize="2xl"
+                    fontWeight="bold"
+                    bgGradient="linear(to-r, blue.400, purple.500)"
+                    bgClip="text"
+                  >
+                    Architecture Preview
+                  </Text>
+                  {!isApiAvailable && (
+                    <Tooltip label="Using static data - API unavailable">
+                      <Badge
+                        colorScheme="orange"
+                        variant="outline"
+                        fontSize="xs"
+                      >
+                        Static
+                      </Badge>
+                    </Tooltip>
+                  )}
+                </HStack>
                 <Text fontSize="sm" color="gray.500">
                   {architectureInfo.description}
                 </Text>
@@ -262,7 +448,8 @@ export const ProjectPreview: React.FC = () => {
             <Flex justify="space-between" align="center">
               <HStack spacing={2}>
                 <Text fontSize="sm" color="gray.600">
-                  Project {currentProjectIndex + 1} of {projects.length}
+                  Project {currentProjectIndex + 1} of{" "}
+                  {architectureInfo.projects.length}
                 </Text>
                 <Badge variant="outline" colorScheme={layerInfo.color}>
                   {layerInfo.label} Layer
@@ -276,7 +463,7 @@ export const ProjectPreview: React.FC = () => {
                   size="sm"
                   variant="ghost"
                   onClick={prevProject}
-                  isDisabled={projects.length <= 1}
+                  isDisabled={architectureInfo.projects.length <= 1}
                   borderRadius="full"
                 />
                 <IconButton
@@ -285,7 +472,7 @@ export const ProjectPreview: React.FC = () => {
                   size="sm"
                   variant="ghost"
                   onClick={nextProject}
-                  isDisabled={projects.length <= 1}
+                  isDisabled={architectureInfo.projects.length <= 1}
                   borderRadius="full"
                 />
               </HStack>
@@ -452,16 +639,18 @@ export const ProjectPreview: React.FC = () => {
         </Box>
 
         {/* Project Navigation Dots */}
-        {projects.length > 1 && (
+        {architectureInfo.projects.length > 1 && (
           <Box p={6} pt={2}>
             <Flex justify="center" align="center">
               <HStack spacing={2}>
-                {projects.map((_, index) => {
-                  const projectLayerInfo = getLayerInfo(projects[index].layer);
+                {architectureInfo.projects.map((_, index) => {
+                  const projectLayerInfo = getLayerInfo(
+                    architectureInfo.projects[index].layer
+                  );
                   return (
                     <Tooltip
                       key={index}
-                      label={projects[index].name}
+                      label={architectureInfo.projects[index].name}
                       placement="top"
                     >
                       <Circle
@@ -488,7 +677,7 @@ export const ProjectPreview: React.FC = () => {
         )}
 
         {/* Auto-play indicator */}
-        {isAutoPlaying && projects.length > 1 && (
+        {isAutoPlaying && architectureInfo.projects.length > 1 && (
           <Box position="absolute" bottom={2} right={2}>
             <Circle size={6} bg="blue.500" opacity={0.7}>
               <Box

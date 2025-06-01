@@ -1,3 +1,4 @@
+// src/components/ProjectForm.tsx
 import React, { useEffect } from "react";
 import {
   Box,
@@ -18,10 +19,15 @@ import {
   InputGroup,
   InputLeftElement,
   useColorModeValue,
+  Alert,
+  AlertIcon,
+  AlertDescription,
+  Spinner,
 } from "@chakra-ui/react";
 import { useForm, Controller } from "react-hook-form";
 import { useProjectStore } from "../store/projectStore";
 import { ProjectConfig } from "../types/project";
+import { useArchitectures } from "../hooks/useArchitectures";
 import {
   Rocket,
   Code,
@@ -30,10 +36,22 @@ import {
   CheckCircle,
   AlertCircle,
   Database as DatabaseIcon,
+  Wifi,
+  WifiOff,
+  RefreshCw,
 } from "lucide-react";
 
 export const ProjectForm: React.FC = () => {
   const { config, setConfig, saveConfiguration } = useProjectStore();
+  const {
+    architectures,
+    loading: architecturesLoading,
+    error: architecturesError,
+    isApiAvailable,
+    refetch: refetchArchitectures,
+    getArchitectureOptions,
+  } = useArchitectures();
+
   const toast = useToast();
   const {
     control,
@@ -53,7 +71,6 @@ export const ProjectForm: React.FC = () => {
   useEffect(() => {
     const subscription = watch((value, { name, type }) => {
       if (type === "change" && value && name) {
-        // Prevent infinite loops by checking if the value actually changed
         const currentValue = config[name as keyof ProjectConfig];
         const newValue = value[name as keyof ProjectConfig];
 
@@ -64,12 +81,12 @@ export const ProjectForm: React.FC = () => {
       }
     });
     return () => subscription.unsubscribe();
-  }, [watch]); // Removed setConfig from dependencies to prevent re-subscription
+  }, [watch, config, setConfig]);
 
-  // Reset form when config changes externally (only on mount and when config.name changes)
+  // Reset form when config changes externally
   useEffect(() => {
     reset(config);
-  }, [config.name, reset]); // Only reset when project name changes, not on every config change
+  }, [config.name, reset]);
 
   const onSubmit = (data: ProjectConfig) => {
     setConfig(data);
@@ -85,46 +102,13 @@ export const ProjectForm: React.FC = () => {
     });
   };
 
-  const getArchitectureInfo = (arch: string) => {
-    switch (arch) {
-      case "clean":
-        return {
-          description: "Separation of concerns with dependency inversion",
-          complexity: "Intermediate",
-          projects: 4,
-          color: "blue",
-        };
-      case "ddd":
-        return {
-          description: "Rich domain modeling with bounded contexts",
-          complexity: "Advanced",
-          projects: 5,
-          color: "purple",
-        };
-      case "hexagonal":
-        return {
-          description:
-            "Ports and adapters pattern for business logic isolation",
-          complexity: "Advanced",
-          projects: 4,
-          color: "green",
-        };
-      case "onion":
-        return {
-          description: "Layered architecture with dependencies pointing inward",
-          complexity: "Intermediate",
-          projects: 4,
-          color: "orange",
-        };
-      default:
-        return {
-          description: "Simple monolithic structure for rapid development",
-          complexity: "Beginner",
-          projects: 1,
-          color: "gray",
-        };
-    }
-  };
+  const architectureOptions = getArchitectureOptions();
+  const watchedValues = watch();
+
+  // Get selected architecture info
+  const selectedArchOption = architectureOptions.find(
+    (option) => option.value === watchedValues.architecture
+  );
 
   const getDatabaseInfo = (db: string) => {
     switch (db) {
@@ -166,8 +150,6 @@ export const ProjectForm: React.FC = () => {
     }
   };
 
-  const watchedValues = watch();
-  const selectedArchInfo = getArchitectureInfo(watchedValues.architecture);
   const selectedDbInfo = getDatabaseInfo(watchedValues.database);
 
   return (
@@ -209,7 +191,50 @@ export const ProjectForm: React.FC = () => {
             <Text color="gray.500" textAlign="center">
               Set up your .NET project structure and architecture
             </Text>
+
+            {/* API Status Indicator */}
+            <HStack spacing={2}>
+              <Icon
+                as={isApiAvailable ? Wifi : WifiOff}
+                color={isApiAvailable ? "green.500" : "orange.500"}
+                size={16}
+              />
+              <Text
+                fontSize="sm"
+                color={isApiAvailable ? "green.600" : "orange.600"}
+              >
+                {isApiAvailable ? "API Connected" : "Using Static Data"}
+              </Text>
+              {!isApiAvailable && (
+                <Tooltip label="Retry API connection">
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    onClick={refetchArchitectures}
+                    isLoading={architecturesLoading}
+                  >
+                    <RefreshCw size={12} />
+                  </Button>
+                </Tooltip>
+              )}
+            </HStack>
           </VStack>
+
+          {/* API Error Alert */}
+          {architecturesError && (
+            <Alert status="warning" borderRadius="lg">
+              <AlertIcon />
+              <AlertDescription>
+                <VStack align="start" spacing={1}>
+                  <Text fontWeight="medium">API Connection Issue</Text>
+                  <Text fontSize="sm">{architecturesError}</Text>
+                  <Text fontSize="sm">
+                    Using static architecture data as fallback.
+                  </Text>
+                </VStack>
+              </AlertDescription>
+            </Alert>
+          )}
 
           <Divider />
 
@@ -328,82 +353,114 @@ export const ProjectForm: React.FC = () => {
 
           {/* Architecture Selection */}
           <VStack spacing={6} align="stretch">
-            <HStack spacing={2}>
-              <Icon as={Layers} color="purple.500" />
-              <Text fontSize="lg" fontWeight="semibold" color="gray.700">
-                Architecture Pattern
-              </Text>
+            <HStack spacing={2} justify="space-between">
+              <HStack spacing={2}>
+                <Icon as={Layers} color="purple.500" />
+                <Text fontSize="lg" fontWeight="semibold" color="gray.700">
+                  Architecture Pattern
+                </Text>
+              </HStack>
+
+              {architecturesLoading && (
+                <HStack spacing={2}>
+                  <Spinner size="sm" color="purple.500" />
+                  <Text fontSize="sm" color="gray.500">
+                    Loading architectures...
+                  </Text>
+                </HStack>
+              )}
             </HStack>
 
-            <Controller
-              name="architecture"
-              control={control}
-              render={({ field }) => (
-                <FormControl>
-                  <Select
-                    {...field}
-                    size="lg"
-                    borderRadius="lg"
-                    _focus={{
-                      borderColor: "purple.500",
-                      boxShadow: "0 0 0 1px purple.500",
-                    }}
-                  >
-                    <option value="default">🏠 Default (Monolithic)</option>
-                    <option value="clean">🎯 Clean Architecture</option>
-                    <option value="ddd">🏛️ Domain Driven Design (DDD)</option>
-                    <option value="hexagonal">
-                      ⬡ Hexagonal (Ports & Adapters)
-                    </option>
-                    <option value="onion">🧅 Onion Architecture</option>
-                  </Select>
-                </FormControl>
-              )}
-            />
+            {/* Show message when no architectures available */}
+            {!architecturesLoading && architectureOptions.length === 0 && (
+              <Alert status="warning" borderRadius="lg">
+                <AlertIcon />
+                <AlertDescription>
+                  <VStack align="start" spacing={1}>
+                    <Text fontWeight="medium">No architectures available</Text>
+                    <Text fontSize="sm">
+                      {architecturesError
+                        ? `API Error: ${architecturesError}`
+                        : "Unable to connect to the API. Please check your backend connection."}
+                    </Text>
+                    <Button
+                      size="sm"
+                      leftIcon={<RefreshCw size={16} />}
+                      onClick={refetchArchitectures}
+                      colorScheme="orange"
+                      variant="outline"
+                      mt={2}
+                    >
+                      Retry Connection
+                    </Button>
+                  </VStack>
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {/* Architecture Select - only show if there are options */}
+            {architectureOptions.length > 0 && (
+              <Controller
+                name="architecture"
+                control={control}
+                render={({ field }) => (
+                  <FormControl>
+                    <Select
+                      {...field}
+                      size="lg"
+                      borderRadius="lg"
+                      isDisabled={architecturesLoading}
+                      _focus={{
+                        borderColor: "purple.500",
+                        boxShadow: "0 0 0 1px purple.500",
+                      }}
+                    >
+                      {architectureOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </Select>
+                  </FormControl>
+                )}
+              />
+            )}
 
             {/* Architecture Info Card */}
-            <Box
-              p={5}
-              bg={`${selectedArchInfo.color}.50`}
-              borderWidth="1px"
-              borderColor={`${selectedArchInfo.color}.200`}
-              borderRadius="xl"
-              borderLeftWidth="4px"
-              borderLeftColor={`${selectedArchInfo.color}.400`}
-            >
-              <VStack align="stretch" spacing={3}>
-                <HStack justify="space-between">
-                  <HStack spacing={2}>
-                    <Text
-                      fontWeight="bold"
-                      color={`${selectedArchInfo.color}.700`}
-                    >
-                      {watchedValues.architecture.charAt(0).toUpperCase() +
-                        watchedValues.architecture.slice(1)}{" "}
-                      Architecture
-                    </Text>
-                    <Badge
-                      colorScheme={selectedArchInfo.color}
-                      variant="subtle"
-                    >
-                      {selectedArchInfo.complexity}
-                    </Badge>
-                  </HStack>
-                  <Badge colorScheme={selectedArchInfo.color} variant="outline">
-                    {selectedArchInfo.projects} project
-                    {selectedArchInfo.projects > 1 ? "s" : ""}
-                  </Badge>
-                </HStack>
+            {selectedArchOption && (
+              <Box
+                p={5}
+                bg={`purple.50`}
+                borderWidth="1px"
+                borderColor={`purple.200`}
+                borderRadius="xl"
+                borderLeftWidth="4px"
+                borderLeftColor={`purple.400`}
+              >
+                <VStack align="stretch" spacing={3}>
+                  <HStack justify="space-between">
+                    <HStack spacing={2}>
+                      <Text fontWeight="bold" color={`purple.700`}>
+                        {selectedArchOption.label}
+                      </Text>
+                      <Badge colorScheme="purple" variant="subtle">
+                        {selectedArchOption.complexity}
+                      </Badge>
+                    </HStack>
 
-                <Text
-                  fontSize="sm"
-                  color={`${selectedArchInfo.color}.600`}
-                  lineHeight="1.5"
-                >
-                  {selectedArchInfo.description}
-                </Text>
-              </VStack>
-            </Box>
+                    <Tooltip label="Loaded from API">
+                      <Badge colorScheme="green" variant="solid" fontSize="xs">
+                        API
+                      </Badge>
+                    </Tooltip>
+                  </HStack>
+
+                  <Text fontSize="sm" color={`purple.600`} lineHeight="1.5">
+                    {selectedArchOption.description}
+                  </Text>
+                </VStack>
+              </Box>
+            )}
           </VStack>
 
           <Divider />
