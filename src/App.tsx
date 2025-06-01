@@ -37,8 +37,8 @@ import { ProjectForm } from "./components/ProjectForm";
 import { ProjectPreview } from "./components/ProjectPreview";
 import { JsonOutput } from "./components/JsonOutput";
 import { ProjectDependenciesManager } from "./components/ProjectDependenciesManager";
-import { FeaturesTab } from "./components/features/FeaturesTab";
 import { useProjectStore } from "./store/projectStore";
+import { EnhancedFeaturesTab } from "./components/features/EnhancedFeaturesTab";
 
 function App() {
   const {
@@ -267,16 +267,16 @@ function App() {
                 description="Basic setup & features"
               />
               <TabWithStatus
-                index={1}
-                icon={Package}
-                label="Dependencies"
-                description="NuGet packages per project"
-              />
-              <TabWithStatus
                 index={2}
                 icon={Zap}
                 label="Features"
                 description="Advanced features & patterns"
+              />
+              <TabWithStatus
+                index={1}
+                icon={Package}
+                label="Dependencies"
+                description="NuGet packages per project"
               />
               <TabWithStatus
                 index={3}
@@ -343,6 +343,26 @@ function App() {
                 </Grid>
               </TabPanel>
 
+              {/* Features Tab */}
+              <TabPanel p={0} pt={6}>
+                {canAccessDependencies() ? (
+                  <EnhancedFeaturesTab />
+                ) : (
+                  <Alert status="warning" borderRadius="lg">
+                    <AlertIcon />
+                    <AlertDescription>
+                      <VStack align="start" spacing={2}>
+                        <Text fontWeight="bold">
+                          Features tab is locked. You need to:
+                        </Text>
+                        <Text>• Complete the basic configuration</Text>
+                        <Text>• Save your configuration first</Text>
+                      </VStack>
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </TabPanel>
+
               {/* Dependencies Tab */}
               <TabPanel p={0} pt={6}>
                 {canAccessDependencies() ? (
@@ -354,26 +374,6 @@ function App() {
                       <VStack align="start" spacing={2}>
                         <Text fontWeight="bold">
                           Dependencies tab is locked. You need to:
-                        </Text>
-                        <Text>• Complete the basic configuration</Text>
-                        <Text>• Save your configuration first</Text>
-                      </VStack>
-                    </AlertDescription>
-                  </Alert>
-                )}
-              </TabPanel>
-
-              {/* Features Tab */}
-              <TabPanel p={0} pt={6}>
-                {canAccessDependencies() ? (
-                  <FeaturesTab />
-                ) : (
-                  <Alert status="warning" borderRadius="lg">
-                    <AlertIcon />
-                    <AlertDescription>
-                      <VStack align="start" spacing={2}>
-                        <Text fontWeight="bold">
-                          Features tab is locked. You need to:
                         </Text>
                         <Text>• Complete the basic configuration</Text>
                         <Text>• Save your configuration first</Text>
